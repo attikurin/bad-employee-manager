@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ダメ社員カードゲーム</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel (JSX変換用) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center">
+    <div id="root" class="w-full flex justify-center"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- アイコンコンポーネント (Lucide-react の代用) ---
+        const IconBase = ({ children, className, size = 24, ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+                {children}
+            </svg>
+        );
+
+        const Briefcase = (props) => <IconBase {...props}><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></IconBase>;
+        const AlertCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></IconBase>;
+        const Clock = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>;
+        const HeartPulse = (props) => <IconBase {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5 4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/></IconBase>;
+        const UserX = (props) => <IconBase {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" x2="22" y1="8" y2="13"/><line x1="22" x2="17" y1="8" y2="13"/></IconBase>;
+        const MessageCircle = (props) => <IconBase {...props}><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></IconBase>;
+        const Coffee = (props) => <IconBase {...props}><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></IconBase>;
+        const RotateCcw = (props) => <IconBase {...props}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></IconBase>;
+        const FileQuestion = (props) => <IconBase {...props}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 10.3c.2-.4.5-.8.9-1a2.1 2.1 0 0 1 2.6.4c.3.4.5.8.5 1.3 0 1.3-2 2-2 2"/><path d="M12 17h.01"/></IconBase>;
+
+        // --- データ定義 ---
+
+        const CARD_DATABASE = [
+            {
+                name: "大事な日に体調不良",
+                description: "50%の確率で欠勤(進捗0)。出社すれば進捗大。",
+                work: 25,
+                stress: 20,
+                icon: <HeartPulse className="text-red-500" />,
+                flavor: "「ゲホッ…今日はどうしても…」",
+            },
+            {
+                name: "午後から帰ります",
+                description: "進捗は出ないが、職場の空気が少し緩む(ストレス-5)。納期は減る。",
+                work: 0,
+                stress: -5,
+                days: 0,
+                icon: <UserX className="text-blue-500" />,
+                flavor: "「急に頭痛がしてきたので…」",
+            },
+            {
+                name: "今やろうと思ってました",
+                description: "進捗小。ストレス中。口答えで時間を稼ぐ。",
+                work: 10,
+                stress: 15,
+                icon: <MessageCircle className="text-yellow-600" />,
+                flavor: "「言われなくても分かってますよ！」",
+            },
+            {
+                name: "PC再起動中",
+                description: "進捗極小。何もせず時が過ぎる。",
+                work: 5,
+                stress: 5,
+                icon: <Clock className="text-gray-500" />,
+                flavor: "「アップデート始まっちゃって〜」",
+            },
+            {
+                name: "タバコ休憩",
+                description: "進捗0。本人はリフレッシュしたが上司はイライラ。",
+                work: 0,
+                stress: 10,
+                icon: <Coffee className="text-orange-500" />,
+                flavor: "「ちょっと一服」と言って30分。",
+            },
+            {
+                name: "謎の自信",
+                description: "「任せてください」と言うが、進捗はランダム(0~30)。",
+                work: 0, 
+                stress: 10,
+                icon: <AlertCircle className="text-purple-500" />,
+                flavor: "根拠はないが自信はある。",
+            },
+            {
+                name: "奇跡の定時退社",
+                description: "進捗大。ただし明日は来ないかもしれない(ストレス大)。",
+                work: 30,
+                stress: 25,
+                icon: <Briefcase className="text-green-600" />,
+                flavor: "「お先に失礼します！」(全速力)",
+                isRare: true,
+            },
+            {
+                name: "逆ギレ",
+                description: "進捗マイナス(手直し発生)。ストレス特大。",
+                work: -10,
+                stress: 30,
+                icon: <AlertCircle className="text-red-700" />,
+                flavor: "「そんな指示受けてませんけど！？」",
+            }
+        ];
+
+        const INITIAL_DAYS = 10;
+        const MAX_STRESS = 100;
+        const GOAL_PROGRESS = 100;
+
+        // --- メインコンポーネント ---
+
+        function BadEmployeeGame() {
+            const [gameState, setGameState] = useState('start');
+            const [difficulty, setDifficulty] = useState('normal');
+            const [progress, setProgress] = useState(0);
+            const [stress, setStress] = useState(0);
+            const [daysLeft, setDaysLeft] = useState(INITIAL_DAYS);
+            const [hand, setHand] = useState([]);
+            const [logs, setLogs] = useState([]);
+            const [feedback, setFeedback] = useState(null);
+
+            // Initialize Game
+            const startGame = (mode) => {
+                setDifficulty(mode);
+                setGameState('playing');
+                setProgress(0);
+                setStress(0);
+                setDaysLeft(mode === 'hard' ? 8 : INITIAL_DAYS);
+                setLogs([
+                    mode === 'hard' 
+                        ? "【ハードモード】開始。社員の顔が見えません。勘で採用してください。" 
+                        : "プロジェクト開始。納期は10日後です。"
+                ]);
+                drawHand(3);
+            };
+
+            const drawHand = (count) => {
+                const newCards = [];
+                for (let i = 0; i < count; i++) {
+                    const template = CARD_DATABASE[Math.floor(Math.random() * CARD_DATABASE.length)];
+                    newCards.push({ ...template, id: Math.random().toString(36).substr(2, 9) });
+                }
+                setHand(newCards);
+            };
+
+            const addLog = (msg) => {
+                setLogs(prev => [msg, ...prev].slice(0, 5));
+            };
+
+            const playCard = (card) => {
+                if (gameState !== 'playing') return;
+
+                if (difficulty === 'hard') {
+                    addLog(`【採用】正体は「${card.name}」でした！`);
+                }
+
+                let actualWork = card.work;
+                let actualStress = card.stress;
+                let logMsg = "";
+
+                if (card.name === "大事な日に体調不良") {
+                    if (Math.random() > 0.5) {
+                        actualWork = 0;
+                        logMsg = "→ 体調不良で欠勤！進捗なし！上司の血圧上昇！";
+                    } else {
+                        logMsg = "→ 奇跡的に出社！仕事がはかどった！";
+                    }
+                } else if (card.name === "謎の自信") {
+                    actualWork = Math.floor(Math.random() * 31);
+                    logMsg = `→ 結果、進捗は ${actualWork}% だった…`;
+                } else {
+                    logMsg = `→ ${card.name}を発動。`;
+                }
+
+                const newProgress = Math.min(GOAL_PROGRESS, Math.max(0, progress + actualWork));
+                const stressMultiplier = difficulty === 'hard' && actualStress > 0 ? 1.2 : 1;
+                const newStress = Math.min(MAX_STRESS, Math.max(0, stress + Math.ceil(actualStress * stressMultiplier)));
+                const newDays = daysLeft - 1 + (card.days || 0);
+
+                setProgress(newProgress);
+                setStress(newStress);
+                setDaysLeft(newDays);
+                addLog(`${card.flavor}`);
+                addLog(logMsg);
+
+                if (actualWork > 15) setFeedback({ msg: "進捗ヨシ！", type: "good" });
+                else if (actualStress >= 20) setFeedback({ msg: "ストレス限界！", type: "bad" });
+                else setFeedback({ msg: "勤務終了", type: "neutral" });
+                setTimeout(() => setFeedback(null), 1000);
+
+                if (newStress >= MAX_STRESS) {
+                    setGameState('lost');
+                    addLog("【敗北】ストレスで胃に穴が開き入院しました。");
+                } else if (newDays < 0 && newProgress < GOAL_PROGRESS) {
+                    setGameState('lost');
+                    addLog("【敗北】納期を守れずプロジェクト炎上。");
+                } else if (newProgress >= GOAL_PROGRESS) {
+                    setGameState('won');
+                    addLog("【勝利】奇跡的にプロジェクト完了！");
+                } else {
+                    const remainingHand = hand.filter(c => c.id !== card.id);
+                    const template = CARD_DATABASE[Math.floor(Math.random() * CARD_DATABASE.length)];
+                    const newCard = { ...template, id: Math.random().toString(36).substr(2, 9) };
+                    setHand([...remainingHand, newCard]);
+                }
+            };
+
+            return (
+                <div className="w-full max-w-md bg-white shadow-2xl rounded-xl overflow-hidden border border-slate-200 m-4">
+                    
+                    {/* Header */}
+                    <div className={`${difficulty === 'hard' ? 'bg-red-900' : 'bg-slate-800'} text-white p-4 flex justify-between items-center transition-colors`}>
+                        <h1 className="font-bold text-lg flex items-center gap-2">
+                            <Briefcase size={20} />
+                            {difficulty === 'hard' ? '暗闇のマネジメント' : 'ダメ社員マネージャー'}
+                        </h1>
+                        <div className="text-xs bg-slate-700 px-2 py-1 rounded">
+                            Ver 1.1
+                        </div>
+                    </div>
+
+                    {/* Start Screen */}
+                    {gameState === 'start' && (
+                        <div className="p-8 text-center space-y-6">
+                            <div className="text-6xl mb-4">😱</div>
+                            <h2 className="text-2xl font-bold text-slate-700">プロジェクト炎上案件</h2>
+                            <p className="text-slate-500 text-sm">
+                                あなたはプロジェクトマネージャーです。<br/>
+                                部下は「ダメ社員」ばかり。<br/>
+                                彼らの言い訳（カード）をうまく使いこなし、<br/>
+                                胃に穴が開く前に納期を守ってください。
+                            </p>
+                            
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => startGame('normal')}
+                                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow transition transform active:scale-95 flex justify-center items-center gap-2"
+                                >
+                                    <Briefcase size={18} /> 通常モードで着任
+                                </button>
+                                
+                                <button 
+                                    onClick={() => startGame('hard')}
+                                    className="w-full py-3 bg-red-800 hover:bg-red-900 text-white font-bold rounded-lg shadow transition transform active:scale-95 flex justify-center items-center gap-2"
+                                >
+                                    <FileQuestion size={18} /> ハードモード（伏せカード）
+                                </button>
+                                <p className="text-xs text-red-600 font-bold">※カードの中身が見えず、納期も短くなります</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Playing Screen */}
+                    {gameState !== 'start' && (
+                        <div className="relative">
+                            {feedback && (
+                                <div className={`absolute inset-0 z-50 flex items-center justify-center pointer-events-none animate-bounce`}>
+                                    <div className={`text-4xl font-black px-6 py-3 rounded-xl border-4 shadow-xl transform rotate-[-10deg]
+                                        ${feedback.type === 'good' ? 'bg-yellow-400 text-red-600 border-red-600' : 
+                                        feedback.type === 'bad' ? 'bg-purple-800 text-white border-purple-500' : 'bg-gray-200 text-gray-600 border-gray-400'}`}>
+                                        {feedback.msg}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="bg-slate-50 p-4 space-y-4 border-b border-slate-200">
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-1">
+                                        <span>プロジェクト進捗</span>
+                                        <span>{progress}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-300 rounded-full h-4 overflow-hidden">
+                                        <div className="bg-green-500 h-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-1">
+                                        <span className="flex items-center gap-1 text-red-600"><HeartPulse size={14}/> 上司のストレス</span>
+                                        <span className={`${stress > 80 ? 'text-red-600 animate-pulse' : 'text-slate-600'}`}>{stress}/100</span>
+                                    </div>
+                                    <div className="w-full bg-slate-300 rounded-full h-2 overflow-hidden">
+                                        <div className={`h-full transition-all duration-500 ${stress > 80 ? 'bg-red-600' : 'bg-orange-400'}`} style={{ width: `${stress}%` }}></div>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end">
+                                    <div className="bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                                        <Clock size={12} />
+                                        納期まであと: <span className={`text-lg ${daysLeft <= 3 ? 'text-red-600 font-black' : 'text-blue-600'}`}>{daysLeft}</span> 日
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="h-40 bg-slate-200 flex flex-col p-2 overflow-y-auto space-y-1 text-xs font-mono border-b border-slate-300">
+                                {logs.map((log, i) => (
+                                    <div key={i} className={`p-1 rounded ${i === 0 ? 'bg-white shadow text-slate-900 font-bold' : 'text-slate-500'}`}>
+                                        {log}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="p-4 bg-slate-100 min-h-[280px]">
+                                {gameState === 'playing' ? (
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <p className="text-xs text-center text-slate-400 mb-1">
+                                            {difficulty === 'hard' ? '誰を採用しますか？（中身は不明です）' : '社員（カード）を選択して仕事を割り振ってください'}
+                                        </p>
+                                        
+                                        {hand.map((card) => (
+                                            <button 
+                                                key={card.id}
+                                                onClick={() => playCard(card)}
+                                                className="bg-white hover:bg-blue-50 border-l-4 border-blue-500 shadow-sm hover:shadow-md p-3 rounded text-left transition-all group flex items-start gap-3 relative overflow-hidden w-full"
+                                            >
+                                                {difficulty === 'hard' ? (
+                                                    <div className="flex items-center gap-3 w-full">
+                                                        <div className="mt-1 p-2 bg-slate-200 rounded-full">
+                                                            <FileQuestion className="text-slate-500" size={24} />
+                                                        </div>
+                                                        <div className="flex-1 opacity-60">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="font-bold text-slate-800 text-sm">履歴書在中</span>
+                                                                <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500">詳細不明</span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 leading-tight mb-1">内容は開封するまで分かりません…</p>
+                                                            <p className="text-[10px] text-slate-400 italic">"よろしくお願いします！"</p>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-3 w-full">
+                                                        <div className="mt-1 p-2 bg-slate-100 rounded-full group-hover:bg-blue-100 transition-colors">
+                                                            {card.icon}
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="font-bold text-slate-800 text-sm">{card.name}</span>
+                                                                <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500">
+                                                                    進捗:{card.work > 0 ? `+${card.work}` : card.work} / 💀+{card.stress}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 leading-tight mb-1">{card.description}</p>
+                                                            <p className="text-[10px] text-slate-400 italic">"{card.flavor}"</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-full space-y-4">
+                                        <div className="text-6xl">
+                                            {gameState === 'won' ? '🎉' : '💀'}
+                                        </div>
+                                        <h3 className="text-xl font-bold">
+                                            {gameState === 'won' ? 'プロジェクト完了！' : 'ゲームオーバー'}
+                                        </h3>
+                                        <p className="text-sm text-center text-slate-600 whitespace-pre-wrap">
+                                            {gameState === 'won' 
+                                                ? `素晴らしいマネジメントでした。\n最終ストレス: ${stress}%` 
+                                                : `あなたのマネジメント人生はここで終了です。\n進捗: ${progress}%`}
+                                        </p>
+                                        <button 
+                                            onClick={() => setGameState('start')}
+                                            className="px-6 py-2 bg-slate-800 text-white rounded-lg flex items-center gap-2 hover:bg-slate-700"
+                                        >
+                                            <RotateCcw size={16} /> タイトルに戻る
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<BadEmployeeGame />);
+    </script>
+</body>
+</html>
